@@ -5,5 +5,5 @@ export class CreateIdentityDto {
   email?: string;
 
   @IsPhoneNumber()
-  phoneNumber?: number;
+  phoneNumber?: string;
 }

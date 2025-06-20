@@ -2,7 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { CreateIdentityDto } from "./dto/create-identity.dto";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Identity } from "./entities/identity.entity";
-import { Repository } from "typeorm";
+import { FindCursor, Repository } from "typeorm";
 
 @Injectable()
 export class IdentityService {
@@ -12,6 +12,17 @@ export class IdentityService {
   ) {}
 
   create(createIdentityDto: CreateIdentityDto) {
+    // check if it already exists
+    const dataExists = this.identityRepository.findOne({
+      where: [
+        { email: createIdentityDto.email },
+        { phoneNumber: createIdentityDto.phoneNumber },
+      ],
+    });
+
+    if (dataExists) {
+      return dataExists;
+    }
     return this.identityRepository.save(
       createIdentityDto as unknown as Identity
     );
