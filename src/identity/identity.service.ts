@@ -52,6 +52,8 @@ export class IdentityService {
     newContact: Identity
   ): { response: CreateIdentityResponseDto; isNewContactDifferent: boolean } {
     let isNewContactDifferent = true;
+    let emailSet = new Set<string>();
+    let phoneNumberSet = new Set<string>();
 
     const response = new CreateIdentityResponseDto();
     const contactDetails = new ContactDto();
@@ -63,8 +65,8 @@ export class IdentityService {
         contactDetails.secondaryContactIds.push(existingContact.id);
       }
 
-      contactDetails.emails.push(existingContact.email);
-      contactDetails.phoneNumbers.push(existingContact.phoneNumber);
+      emailSet.add(existingContact.email);
+      phoneNumberSet.add(existingContact.phoneNumber);
 
       if (
         existingContact.email == newContact.email &&
@@ -73,6 +75,10 @@ export class IdentityService {
         isNewContactDifferent = false;
       }
     }
+
+    // deduplicate emails and phoneNumbers
+    contactDetails.emails = [...emailSet];
+    contactDetails.phoneNumbers = [...phoneNumberSet];
 
     response.contact = contactDetails;
     return { response, isNewContactDifferent };
