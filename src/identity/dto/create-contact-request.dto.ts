@@ -1,6 +1,6 @@
 import { IsEmail, IsPhoneNumber } from "class-validator";
 
-export class CreateIdentityDto {
+export class CreateContactRequestDto {
   @IsEmail()
   email?: string;
 

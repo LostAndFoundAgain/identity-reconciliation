@@ -8,7 +8,7 @@ export class ContactDto {
   secondaryContactIds: number[] = [];
 }
 
-export class CreateIdentityResponseDto {
+export class CreateContactResponseDto {
   @ValidateNested({ each: true })
   @Type(() => ContactDto)
   contact: ContactDto;

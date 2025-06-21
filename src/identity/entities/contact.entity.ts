@@ -9,7 +9,7 @@ import {
 import { PRIMARY } from "../constants/common.constants";
 
 @Entity()
-export class Identity {
+export class Contact {
   @PrimaryGeneratedColumn()
   id: number;
 

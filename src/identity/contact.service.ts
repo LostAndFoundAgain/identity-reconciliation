@@ -1,33 +1,33 @@
 import { Injectable } from "@nestjs/common";
-import { CreateIdentityDto } from "./dto/create-identity.dto";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Identity } from "./entities/identity.entity";
+import { Contact } from "./entities/contact.entity";
 import { In, Repository } from "typeorm";
 import {
   ContactDto,
-  CreateIdentityResponseDto,
-} from "./dto/create-identity-response.dto";
+  CreateContactResponseDto,
+} from "./dto/create-contact-response.dto";
 import { PRIMARY, SECONDARY } from "./constants/common.constants";
+import { CreateContactRequestDto } from "./dto/create-contact-request.dto";
 
 @Injectable()
 export class IdentityService {
   constructor(
-    @InjectRepository(Identity)
-    private identityRepository: Repository<Identity>
+    @InjectRepository(Contact)
+    private identityRepository: Repository<Contact>
   ) {}
 
-  async create(createIdentityDto: CreateIdentityDto) {
+  async create(createContactRequestDto: CreateContactRequestDto) {
     const directSecondaryContacts =
       await this.findIdentitiesByEmailPhoneNumberAndLinkPrecedence(
-        createIdentityDto.email,
-        createIdentityDto.phoneNumber,
+        createContactRequestDto.email,
+        createContactRequestDto.phoneNumber,
         SECONDARY
       );
 
     const directPrimaryContacts =
       await this.findIdentitiesByEmailPhoneNumberAndLinkPrecedence(
-        createIdentityDto.email,
-        createIdentityDto.phoneNumber,
+        createContactRequestDto.email,
+        createContactRequestDto.phoneNumber,
         PRIMARY
       );
 
@@ -52,9 +52,9 @@ export class IdentityService {
       order: { createdAt: "ASC" },
     });
 
-    const newContact = new Identity();
-    newContact.email = createIdentityDto.email;
-    newContact.phoneNumber = createIdentityDto.phoneNumber;
+    const newContact = new Contact();
+    newContact.email = createContactRequestDto.email;
+    newContact.phoneNumber = createContactRequestDto.phoneNumber;
 
     if (allContacts.length) {
       return this.processExistingContacts(allContacts, newContact);
@@ -65,8 +65,8 @@ export class IdentityService {
 
   // User already exists
   async processExistingContacts(
-    existingContacts: Identity[],
-    newContact: Identity
+    existingContacts: Contact[],
+    newContact: Contact
   ) {
     newContact.linkPrecedence = SECONDARY;
     const { response, shouldSaveNewContact } =
@@ -86,9 +86,9 @@ export class IdentityService {
   }
 
   // User registration is new
-  async processNewContact(newContact: Identity) {
+  async processNewContact(newContact: Contact) {
     const savedNewContact = await this.identityRepository.save(newContact);
-    const response = new CreateIdentityResponseDto();
+    const response = new CreateContactResponseDto();
     const contactDetails = new ContactDto();
     contactDetails.primaryContactId = savedNewContact.id;
     contactDetails.emails.push(savedNewContact.email);
@@ -98,8 +98,8 @@ export class IdentityService {
   }
 
   private async createContactResponseForRegisteredUser(
-    existingContacts: Identity[],
-    newContact: Identity
+    existingContacts: Contact[],
+    newContact: Contact
   ) {
     let newContactEmailExists = false;
     let newContactPhoneNumberExists = false;
@@ -107,7 +107,7 @@ export class IdentityService {
     let emailSet = new Set<string>();
     let phoneNumberSet = new Set<string>();
 
-    const response = new CreateIdentityResponseDto();
+    const response = new CreateContactResponseDto();
     const contactDetails = new ContactDto();
 
     let primaryToSecondaryConversionList = [];
@@ -146,36 +146,46 @@ export class IdentityService {
     );
 
     response.contact = contactDetails;
-    await this.convertContactType(
+    await this.convertContactTypeAndLinkedId(
       primaryToSecondaryConversionList,
       contactDetails.primaryContactId
     );
     return { response, shouldSaveNewContact };
   }
 
-  async convertContactType(ids: string[], linkedId: number) {
-    return await this.identityRepository.update(
-      { id: In(ids) },
-      { linkPrecedence: SECONDARY }
-    );
+  async convertContactTypeAndLinkedId(ids: string[], linkedId: number) {
+    if (!ids.length) {
+      return;
+    }
+
+    return await this.identityRepository
+      .createQueryBuilder()
+      .update(Contact)
+      .set({
+        linkPrecedence: SECONDARY,
+        linkedId,
+      })
+      .where("id IN (:...ids)", { ids })
+      .orWhere("linkedId IN (:...ids)", { ids })
+      .execute();
   }
 
   async findIdentitiesByEmailPhoneNumberAndLinkPrecedence(
     email: string,
     phoneNumber: string,
     linkPrecedence: string
-  ): Promise<Identity[]> {
+  ): Promise<Contact[]> {
     return this.identityRepository
-      .createQueryBuilder("identity")
+      .createQueryBuilder("contact")
       .select([
-        "identity.id",
-        "identity.email",
-        "identity.phoneNumber",
-        "identity.linkPrecedence",
-        "identity.linkedId",
+        "contact.id",
+        "contact.email",
+        "contact.phoneNumber",
+        "contact.linkPrecedence",
+        "contact.linkedId",
       ])
       .where(
-        "(identity.email = :email OR identity.phoneNumber = :phoneNumber) AND identity.linkPrecedence = :linkPrecedence",
+        "(contact.email = :email OR contact.phoneNumber = :phoneNumber) AND contact.linkPrecedence = :linkPrecedence",
         { email, phoneNumber, linkPrecedence }
       )
       .getMany();
