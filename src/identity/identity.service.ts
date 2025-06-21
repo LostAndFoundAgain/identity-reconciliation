@@ -17,16 +17,47 @@ export class IdentityService {
   ) {}
 
   async create(createIdentityDto: CreateIdentityDto) {
-    const existingContacts = await this.find(
-      createIdentityDto.email,
-      createIdentityDto.phoneNumber
+    const directSecondaryContacts =
+      await this.findIdentitiesByEmailPhoneNumberAndLinkPrecedence(
+        createIdentityDto.email,
+        createIdentityDto.phoneNumber,
+        SECONDARY
+      );
+
+    const directPrimaryContacts =
+      await this.findIdentitiesByEmailPhoneNumberAndLinkPrecedence(
+        createIdentityDto.email,
+        createIdentityDto.phoneNumber,
+        PRIMARY
+      );
+
+    const primaryContactIdSet = new Set(
+      directSecondaryContacts.map(
+        (secondaryContact) => secondaryContact.linkedId
+      )
     );
+
+    directPrimaryContacts.forEach((primaryContact) =>
+      primaryContactIdSet.add(primaryContact.id)
+    );
+
+    const allPrimaryContacts = [...primaryContactIdSet];
+
+    // fetch complete list of contacts (primary + secondary)
+    const allContacts = await this.identityRepository.find({
+      where: [
+        { id: In(allPrimaryContacts) },
+        { linkedId: In(allPrimaryContacts) },
+      ],
+      order: { createdAt: "ASC" },
+    });
+
     const newContact = new Identity();
     newContact.email = createIdentityDto.email;
     newContact.phoneNumber = createIdentityDto.phoneNumber;
 
-    if (existingContacts.length) {
-      return this.processExistingContacts(existingContacts, newContact);
+    if (allContacts.length) {
+      return this.processExistingContacts(allContacts, newContact);
     } else {
       return this.processNewContact(newContact);
     }
@@ -38,16 +69,15 @@ export class IdentityService {
     newContact: Identity
   ) {
     newContact.linkPrecedence = SECONDARY;
-    const response = await this.createContactResponseForRegisteredUser(
-      existingContacts,
-      newContact
-    );
+    const { response, shouldSaveNewContact } =
+      await this.createContactResponseForRegisteredUser(
+        existingContacts,
+        newContact
+      );
+
     newContact.linkedId = response.contact.primaryContactId;
     // if request has new contact details
-    if (
-      response.contact.emails.length > existingContacts.length ||
-      response.contact.phoneNumbers.length > existingContacts.length
-    ) {
+    if (shouldSaveNewContact) {
       const savedNewContact = await this.identityRepository.save(newContact);
       response.contact.secondaryContactIds.push(savedNewContact.id);
     }
@@ -71,6 +101,9 @@ export class IdentityService {
     existingContacts: Identity[],
     newContact: Identity
   ) {
+    let newContactEmailExists = false;
+    let newContactPhoneNumberExists = false;
+    let shouldSaveNewContact = true;
     let emailSet = new Set<string>();
     let phoneNumberSet = new Set<string>();
 
@@ -94,19 +127,12 @@ export class IdentityService {
         contactDetails.secondaryContactIds.push(existingContact.id);
       }
 
-      // This is not needed since all the contacts already stored must have different values for email and ph
-      // emailSet.add(existingContact.email);
-      // phoneNumberSet.add(existingContact.phoneNumber);
-    }
+      emailSet.add(existingContact.email);
+      phoneNumberSet.add(existingContact.phoneNumber);
 
-    // If we dont have primary contact yet, it means there exists other unlinked contacts
-    // We can trace back to primary contact and other linked contacts with any of the fetched secondary contacts
-    if (!contactDetails.primaryContactId) {
-      contactDetails.primaryContactId = existingContacts[0].linkedId;
-      // fetch other non returned contacts
-      const otherContacts = await this.identityRepository.find({
-        where: [{ linkedId: contactDetails.primaryContactId }],
-      });
+      newContactEmailExists = existingContact.email == newContact.email;
+      newContactPhoneNumberExists =
+        existingContact.phoneNumber == newContact.phoneNumber;
     }
 
     emailSet.add(newContact.email);
@@ -115,23 +141,44 @@ export class IdentityService {
     contactDetails.emails = [...emailSet];
     contactDetails.phoneNumbers = [...phoneNumberSet];
 
+    shouldSaveNewContact = !(
+      newContactEmailExists && newContactPhoneNumberExists
+    );
+
     response.contact = contactDetails;
-    await this.convertContactType(primaryToSecondaryConversionList);
-    return response;
+    await this.convertContactType(
+      primaryToSecondaryConversionList,
+      contactDetails.primaryContactId
+    );
+    return { response, shouldSaveNewContact };
   }
 
-  async convertContactType(ids: string[]) {
+  async convertContactType(ids: string[], linkedId: number) {
     return await this.identityRepository.update(
       { id: In(ids) },
       { linkPrecedence: SECONDARY }
     );
   }
 
-  async find(email: string, phoneNumber: string): Promise<Identity[]> {
-    return this.identityRepository.find({
-      select: ["id", "email", "phoneNumber", "linkPrecedence"],
-      where: [{ email }, { phoneNumber }],
-    });
+  async findIdentitiesByEmailPhoneNumberAndLinkPrecedence(
+    email: string,
+    phoneNumber: string,
+    linkPrecedence: string
+  ): Promise<Identity[]> {
+    return this.identityRepository
+      .createQueryBuilder("identity")
+      .select([
+        "identity.id",
+        "identity.email",
+        "identity.phoneNumber",
+        "identity.linkPrecedence",
+        "identity.linkedId",
+      ])
+      .where(
+        "(identity.email = :email OR identity.phoneNumber = :phoneNumber) AND identity.linkPrecedence = :linkPrecedence",
+        { email, phoneNumber, linkPrecedence }
+      )
+      .getMany();
   }
 }
 
