@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { BadRequestException, HttpException, Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Contact } from "./entities/contact.entity";
 import { In, Repository } from "typeorm";
@@ -17,55 +17,66 @@ export class IdentityService {
   ) {}
 
   async create(createContactRequestDto: CreateContactRequestDto) {
+    try {
+      // validate if both not null
+      if (
+        !createContactRequestDto.email &&
+        !createContactRequestDto.phoneNumber
+      ) {
+        throw new BadRequestException(
+          "Either [email] or [phoneNumber] must be provided"
+        );
+      }
 
-    // validate if both not null
-    if(!createContactRequestDto.email && !createContactRequestDto.phoneNumber) {
-      throw new BadRequestException('Either [email] or [phoneNumber] must be provided')
-    }
+      const directSecondaryContacts =
+        await this.findIdentitiesByEmailPhoneNumberAndLinkPrecedence(
+          createContactRequestDto.email,
+          createContactRequestDto.phoneNumber,
+          SECONDARY
+        );
 
-    const directSecondaryContacts =
-      await this.findIdentitiesByEmailPhoneNumberAndLinkPrecedence(
-        createContactRequestDto.email,
-        createContactRequestDto.phoneNumber,
-        SECONDARY
+      const directPrimaryContacts =
+        await this.findIdentitiesByEmailPhoneNumberAndLinkPrecedence(
+          createContactRequestDto.email,
+          createContactRequestDto.phoneNumber,
+          PRIMARY
+        );
+
+      const primaryContactIdSet = new Set(
+        directSecondaryContacts.map(
+          (secondaryContact) => secondaryContact.linkedId
+        )
       );
 
-    const directPrimaryContacts =
-      await this.findIdentitiesByEmailPhoneNumberAndLinkPrecedence(
-        createContactRequestDto.email,
-        createContactRequestDto.phoneNumber,
-        PRIMARY
+      directPrimaryContacts.forEach((primaryContact) =>
+        primaryContactIdSet.add(primaryContact.id)
       );
 
-    const primaryContactIdSet = new Set(
-      directSecondaryContacts.map(
-        (secondaryContact) => secondaryContact.linkedId
-      )
-    );
+      const allPrimaryContacts = [...primaryContactIdSet];
 
-    directPrimaryContacts.forEach((primaryContact) =>
-      primaryContactIdSet.add(primaryContact.id)
-    );
+      // fetch complete list of contacts (primary + secondary)
+      const allContacts = await this.identityRepository.find({
+        where: [
+          { id: In(allPrimaryContacts) },
+          { linkedId: In(allPrimaryContacts) },
+        ],
+        order: { createdAt: "ASC" },
+      });
 
-    const allPrimaryContacts = [...primaryContactIdSet];
+      const newContact = new Contact();
+      newContact.email = createContactRequestDto.email;
+      newContact.phoneNumber = createContactRequestDto.phoneNumber;
 
-    // fetch complete list of contacts (primary + secondary)
-    const allContacts = await this.identityRepository.find({
-      where: [
-        { id: In(allPrimaryContacts) },
-        { linkedId: In(allPrimaryContacts) },
-      ],
-      order: { createdAt: "ASC" },
-    });
-
-    const newContact = new Contact();
-    newContact.email = createContactRequestDto.email;
-    newContact.phoneNumber = createContactRequestDto.phoneNumber;
-
-    if (allContacts.length) {
-      return this.processExistingContacts(allContacts, newContact);
-    } else {
-      return this.processNewContact(newContact);
+      if (allContacts.length) {
+        return this.processExistingContacts(allContacts, newContact);
+      } else {
+        return this.processNewContact(newContact);
+      }
+    } catch (exception) {
+      throw new HttpException(
+        `Request failed : ${exception.message}`,
+        exception.status
+      );
     }
   }
 
@@ -93,6 +104,8 @@ export class IdentityService {
 
   // User registration is new
   async processNewContact(newContact: Contact) {
+    // Considering a contact can be saved with either email or phoneNumber as null. Thus response will have null values also if
+    // matched with any of email or phoneNumber
     const savedNewContact = await this.identityRepository.save(newContact);
     const response = new CreateContactResponseDto();
     const contactDetails = new ContactDto();
@@ -136,20 +149,34 @@ export class IdentityService {
       emailSet.add(existingContact.email);
       phoneNumberSet.add(existingContact.phoneNumber);
 
-      newContactEmailExists = existingContact.email == newContact.email;
-      newContactPhoneNumberExists =
-        existingContact.phoneNumber == newContact.phoneNumber;
+      if (existingContact.email == newContact.email) {
+        newContactEmailExists = true;
+      }
+
+      if (existingContact.phoneNumber == newContact.phoneNumber) {
+        newContactPhoneNumberExists = true;
+      }
     }
 
-    emailSet.add(newContact.email);
-    phoneNumberSet.add(newContact.phoneNumber);
+    if (newContact.email) {
+      emailSet.add(newContact.email);
+    }
+
+    if (newContact.phoneNumber) {
+      phoneNumberSet.add(newContact.phoneNumber);
+    }
 
     contactDetails.emails = [...emailSet];
     contactDetails.phoneNumbers = [...phoneNumberSet];
 
-    shouldSaveNewContact = !(
+    const newContactHasValidDetails =
+      newContact.email && newContact.phoneNumber;
+    const newContactHasNewInformation = !(
       newContactEmailExists && newContactPhoneNumberExists
     );
+
+    shouldSaveNewContact =
+      newContactHasValidDetails && newContactHasNewInformation;
 
     response.contact = contactDetails;
     await this.convertContactTypeAndLinkedId(
@@ -177,11 +204,11 @@ export class IdentityService {
   }
 
   async findIdentitiesByEmailPhoneNumberAndLinkPrecedence(
-    email: string,
-    phoneNumber: string,
+    email: string | null,
+    phoneNumber: string | null,
     linkPrecedence: string
   ): Promise<Contact[]> {
-    return this.identityRepository
+    const query = this.identityRepository
       .createQueryBuilder("contact")
       .select([
         "contact.id",
@@ -190,11 +217,19 @@ export class IdentityService {
         "contact.linkPrecedence",
         "contact.linkedId",
       ])
-      .where(
-        "(contact.email = :email OR contact.phoneNumber = :phoneNumber) AND contact.linkPrecedence = :linkPrecedence",
-        { email, phoneNumber, linkPrecedence }
-      )
-      .getMany();
+      .where("contact.linkPrecedence = :linkPrecedence", { linkPrecedence });
+
+    if (email && phoneNumber) {
+      query.andWhere(
+        "(contact.email = :email OR contact.phoneNumber = :phoneNumber)",
+        { email, phoneNumber }
+      );
+    } else if (email) {
+      query.andWhere("contact.email = :email", { email });
+    } else if (phoneNumber) {
+      query.andWhere("contact.phoneNumber = :phoneNumber", { phoneNumber });
+    }
+    return query.getMany();
   }
 }
 
