@@ -14,6 +14,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "build": "nest build",
     "start": "nest start --watch",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
