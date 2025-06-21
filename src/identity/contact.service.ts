@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { BadRequestException, Injectable } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Contact } from "./entities/contact.entity";
 import { In, Repository } from "typeorm";
@@ -17,6 +17,12 @@ export class IdentityService {
   ) {}
 
   async create(createContactRequestDto: CreateContactRequestDto) {
+
+    // validate if both not null
+    if(!createContactRequestDto.email && !createContactRequestDto.phoneNumber) {
+      throw new BadRequestException('Either [email] or [phoneNumber] must be provided')
+    }
+
     const directSecondaryContacts =
       await this.findIdentitiesByEmailPhoneNumberAndLinkPrecedence(
         createContactRequestDto.email,
