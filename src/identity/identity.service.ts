@@ -2,7 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { CreateIdentityDto } from "./dto/create-identity.dto";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Identity } from "./entities/identity.entity";
-import { FindCursor, Repository } from "typeorm";
+import { Repository } from "typeorm";
 
 @Injectable()
 export class IdentityService {
