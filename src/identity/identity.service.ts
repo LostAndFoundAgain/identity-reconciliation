@@ -11,24 +11,24 @@ export class IdentityService {
     private identityRepository: Repository<Identity>
   ) {}
 
-  create(createIdentityDto: CreateIdentityDto) {
-    // check if it already exists
-    const dataExists = this.identityRepository.findOne({
-      where: [
-        { email: createIdentityDto.email },
-        { phoneNumber: createIdentityDto.phoneNumber },
-      ],
-    });
-
-    if (dataExists) {
-      return dataExists;
-    }
-    return this.identityRepository.save(
-      createIdentityDto as unknown as Identity
+  async create(createIdentityDto: CreateIdentityDto) {
+    const primaryContactExists = await this.findOne(
+      createIdentityDto.email,
+      createIdentityDto.phoneNumber
     );
+    const contactToSave = { ...createIdentityDto } as Identity;
+
+    if (primaryContactExists) {
+      contactToSave.linkPrecedence = "secondary";
+      contactToSave.linkedId = primaryContactExists.id;
+    }
+
+    return this.identityRepository.save(contactToSave);
   }
 
-  // update(id: number, updateIdentityDto: UpdateIdentityDto) {
-  //   return `This action updates a #${id} identity`;
-  // }
+  findOne(email: string, phoneNumber: string): Promise<Identity> {
+    return this.identityRepository.findOne({
+      where: [{ email }, { phoneNumber }],
+    });
+  }
 }

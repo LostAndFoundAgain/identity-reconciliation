@@ -7,7 +7,7 @@ export class IdentityController {
   constructor(private readonly identityService: IdentityService) {}
 
   @Post("/identify")
-  create(@Body() createIdentityDto: CreateIdentityDto) {
-    return this.identityService.create(createIdentityDto);
+  async create(@Body() createIdentityDto: CreateIdentityDto) {
+    return await this.identityService.create(createIdentityDto);
   }
 }
