@@ -7,6 +7,7 @@ import {
   ContactDto,
   CreateIdentityResponseDto,
 } from "./dto/create-identity-response.dto";
+import { PRIMARY, SECONDARY } from "./constants/common.constants";
 
 @Injectable()
 export class IdentityService {
@@ -20,32 +21,43 @@ export class IdentityService {
       createIdentityDto.email,
       createIdentityDto.phoneNumber
     );
-    const contactToSave = { ...createIdentityDto } as Identity;
+    const newContact = { ...createIdentityDto } as Identity;
 
-    if (existingContacts) {
-      contactToSave.linkPrecedence = "secondary";
-      contactToSave.linkedId = existingContacts[0].id;
+    if (existingContacts.length) {
+      newContact.linkPrecedence = SECONDARY;
+      newContact.linkedId = existingContacts[0].id;
     }
 
-    const savedNewContact = await this.identityRepository.save(contactToSave);
-    existingContacts.push(savedNewContact);
-    return this.createContactResponse(existingContacts);
+    const { response, isNewContactDifferent } = this.createContactResponse(
+      existingContacts,
+      newContact
+    );
+
+    if (isNewContactDifferent) {
+      const newContactSaved = await this.identityRepository.save(newContact);
+      if (newContactSaved.linkPrecedence === PRIMARY) {
+        response.contact.primaryContactId = newContactSaved.id;
+      } else {
+        response.contact.secondaryContactIds.push(newContactSaved.id);
+      }
+      response.contact.emails.push(newContactSaved.email);
+      response.contact.phoneNumbers.push(newContactSaved.phoneNumber);
+    }
+
+    return response;
   }
 
-  find(email: string, phoneNumber: string): Promise<Identity[]> {
-    return this.identityRepository.find({
-      where: [{ email }, { phoneNumber }],
-    });
-  }
+  private createContactResponse(
+    existingContacts: Identity[],
+    newContact: Identity
+  ): { response: CreateIdentityResponseDto; isNewContactDifferent: boolean } {
+    let isNewContactDifferent = true;
 
-  createContactResponse(existingContacts: Identity[]) {
-    const createIdentityResponseDto = new CreateIdentityResponseDto();
+    const response = new CreateIdentityResponseDto();
     const contactDetails = new ContactDto();
 
-    contactDetails.primaryContactId = existingContacts[0].id;
-
     for (const existingContact of existingContacts) {
-      if (existingContact.linkPrecedence === "primary") {
+      if (existingContact.linkPrecedence === PRIMARY) {
         contactDetails.primaryContactId = existingContact.id;
       } else {
         contactDetails.secondaryContactIds.push(existingContact.id);
@@ -53,9 +65,22 @@ export class IdentityService {
 
       contactDetails.emails.push(existingContact.email);
       contactDetails.phoneNumbers.push(existingContact.phoneNumber);
+
+      if (
+        existingContact.email == newContact.email &&
+        existingContact.phoneNumber == newContact.phoneNumber
+      ) {
+        isNewContactDifferent = false;
+      }
     }
 
-    createIdentityResponseDto.contact = contactDetails;
-    return createIdentityResponseDto;
+    response.contact = contactDetails;
+    return { response, isNewContactDifferent };
+  }
+
+  async find(email: string, phoneNumber: string): Promise<Identity[]> {
+    return this.identityRepository.find({
+      where: [{ email }, { phoneNumber }],
+    });
   }
 }

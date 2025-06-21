@@ -3,9 +3,9 @@ import { ValidateNested } from "class-validator";
 
 export class ContactDto {
   primaryContactId: number;
-  emails: string[];
-  phoneNumbers: string[];
-  secondaryContactIds: number[];
+  emails: string[] = [];
+  phoneNumbers: string[] = [];
+  secondaryContactIds: number[] = [];
 }
 
 export class CreateIdentityResponseDto {
@@ -13,4 +13,3 @@ export class CreateIdentityResponseDto {
   @Type(() => ContactDto)
   contact: ContactDto;
 }
-
