@@ -6,6 +6,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from "typeorm";
+import { PRIMARY } from "../constants/common.constants";
 
 @Entity()
 export class Identity {
@@ -21,8 +22,8 @@ export class Identity {
   @Column({ nullable: true })
   linkedId: number;
 
-  @Column({ default: "primary" })
-  linkPrecedence: string;
+  @Column({ default: PRIMARY })
+  linkPrecedence: string = PRIMARY;
 
   @CreateDateColumn()
   createdAt: Date;

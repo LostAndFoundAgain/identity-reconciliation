@@ -21,37 +21,53 @@ export class IdentityService {
       createIdentityDto.email,
       createIdentityDto.phoneNumber
     );
-    const newContact = { ...createIdentityDto } as Identity;
+    const newContact = new Identity();
+    newContact.email = createIdentityDto.email;
+    newContact.phoneNumber = createIdentityDto.phoneNumber;
 
     if (existingContacts.length) {
-      newContact.linkPrecedence = SECONDARY;
-      newContact.linkedId = existingContacts[0].id;
+      return this.processExistingContacts(existingContacts, newContact);
+    } else {
+      return this.processNewContact(newContact);
     }
+  }
 
-    const { response, isNewContactDifferent } = this.createContactResponse(
-      existingContacts,
-      newContact
-    );
+  // User already exists
+  async processExistingContacts(
+    existingContacts: Identity[],
+    newContact: Identity
+  ) {
+    newContact.linkPrecedence = SECONDARY;
+    newContact.linkedId = existingContacts[0].id;
+    existingContacts.push(newContact);
+    const response =
+      this.createContactResponseForRegisteredUser(existingContacts);
 
-    if (isNewContactDifferent) {
-      const newContactSaved = await this.identityRepository.save(newContact);
-      if (newContactSaved.linkPrecedence === PRIMARY) {
-        response.contact.primaryContactId = newContactSaved.id;
-      } else {
-        response.contact.secondaryContactIds.push(newContactSaved.id);
-      }
-      response.contact.emails.push(newContactSaved.email);
-      response.contact.phoneNumbers.push(newContactSaved.phoneNumber);
+    // if request has new contact details
+    if (
+      response.contact.emails.length == existingContacts.length ||
+      response.contact.phoneNumbers.length == existingContacts.length
+    ) {
+      const savedNewContact = await this.identityRepository.save(newContact);
+      response.contact.secondaryContactIds.push(savedNewContact.id);
     }
 
     return response;
   }
 
-  private createContactResponse(
-    existingContacts: Identity[],
-    newContact: Identity
-  ): { response: CreateIdentityResponseDto; isNewContactDifferent: boolean } {
-    let isNewContactDifferent = true;
+  // User registration is new
+  async processNewContact(newContact: Identity) {
+    const savedNewContact = await this.identityRepository.save(newContact);
+    const response = new CreateIdentityResponseDto();
+    const contactDetails = new ContactDto();
+    contactDetails.primaryContactId = savedNewContact.id;
+    contactDetails.emails.push(savedNewContact.email);
+    contactDetails.phoneNumbers.push(savedNewContact.phoneNumber);
+    response.contact = contactDetails;
+    return response;
+  }
+
+  private createContactResponseForRegisteredUser(existingContacts: Identity[]) {
     let emailSet = new Set<string>();
     let phoneNumberSet = new Set<string>();
 
@@ -61,31 +77,24 @@ export class IdentityService {
     for (const existingContact of existingContacts) {
       if (existingContact.linkPrecedence === PRIMARY) {
         contactDetails.primaryContactId = existingContact.id;
-      } else {
+      } else if (existingContact.id) {
         contactDetails.secondaryContactIds.push(existingContact.id);
       }
 
       emailSet.add(existingContact.email);
       phoneNumberSet.add(existingContact.phoneNumber);
-
-      if (
-        existingContact.email == newContact.email &&
-        existingContact.phoneNumber == newContact.phoneNumber
-      ) {
-        isNewContactDifferent = false;
-      }
     }
 
-    // deduplicate emails and phoneNumbers
     contactDetails.emails = [...emailSet];
     contactDetails.phoneNumbers = [...phoneNumberSet];
 
     response.contact = contactDetails;
-    return { response, isNewContactDifferent };
+    return response;
   }
 
   async find(email: string, phoneNumber: string): Promise<Identity[]> {
     return this.identityRepository.find({
+      select: ["id", "email", "phoneNumber", "linkPrecedence"],
       where: [{ email }, { phoneNumber }],
     });
   }
