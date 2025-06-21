@@ -10,7 +10,7 @@ import { PRIMARY, SECONDARY } from "./constants/common.constants";
 import { CreateContactRequestDto } from "./dto/create-contact-request.dto";
 
 @Injectable()
-export class IdentityService {
+export class ContactService {
   constructor(
     @InjectRepository(Contact)
     private identityRepository: Repository<Contact>

@@ -1,14 +1,25 @@
-import { Controller, Post, Body, HttpStatus, HttpCode } from "@nestjs/common";
-import { IdentityService } from "./contact.service";
+import {
+  Controller,
+  Post,
+  Body,
+  HttpStatus,
+  HttpCode,
+  Logger,
+} from "@nestjs/common";
+import { ContactService } from "./contact.service";
 import { CreateContactRequestDto } from "./dto/create-contact-request.dto";
 
 @Controller("identity")
-export class IdentityController {
-  constructor(private readonly identityService: IdentityService) {}
+export class ContactController {
+  constructor(private readonly contactService: ContactService) {}
 
   @HttpCode(HttpStatus.OK)
   @Post("/identify")
   async create(@Body() createContactRequestDto: CreateContactRequestDto) {
-    return await this.identityService.create(createContactRequestDto);
+    Logger.debug(
+      `POST /identify: ${JSON.stringify(createContactRequestDto)}`,
+      ContactController.name
+    );
+    return await this.contactService.create(createContactRequestDto);
   }
 }
