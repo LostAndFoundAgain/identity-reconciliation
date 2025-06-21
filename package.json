@@ -32,6 +32,7 @@
   },
   "homepage": "https://github.com/LostAndFoundAgain/identity-reconciliation#readme",
   "devDependencies": {
+    "@nestjs/cli": "^11.0.7",
     "@types/node": "^24.0.3",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
