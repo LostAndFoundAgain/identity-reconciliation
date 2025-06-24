@@ -1,8 +1,15 @@
-# identity-reconciliation
+## Identity Reconciliation API
 
-# URL -> https://identity-reconciliation-56m9.onrender.com/contact/identify
+This service de-duplicates and reconciles user identities based on email and phone using link precedence logic.
 
-# Technical aspects : 
-  ## Database -> PostgreSQL
-  ## Framework -> Nestjs
-  ## Hosting platform -> Render.com
+### Tech Stack
+- Node.js + TypeScript
+- NestJS
+- PostgreSQL
+
+### How to Run
+1. `npm install`
+2. `npm run start`
+
+### API Endpoint
+`POST /identify`
